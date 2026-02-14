@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 五子棋</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            z-index: 100;
+        }
+        
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .player-indicator {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid #333;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .player-indicator.black {
+            background: linear-gradient(145deg, #2a2a2a, #000000);
+        }
+        
+        .player-indicator.white {
+            background: linear-gradient(145deg, #ffffff, #e0e0e0);
+        }
+        
+        .btn {
+            padding: 10px 25px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-restart {
+            background: linear-gradient(145deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-restart:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-undo {
+            background: linear-gradient(145deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-undo:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-undo:disabled {
+            background: linear-gradient(145deg, #ccc 0%, #999 100%);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-mode {
+            background: linear-gradient(145deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        .btn-mode:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-mode.active {
+            background: linear-gradient(145deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .ai-thinking {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 30px 50px;
+            border-radius: 15px;
+            font-size: 24px;
+            z-index: 300;
+            display: none;
+            animation: pulse 1.5s infinite;
+        }
+
+        .ai-thinking.show {
+            display: block;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .difficulty-selector {
+            position: absolute;
+            top: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .difficulty-selector label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .difficulty-selector select {
+            padding: 8px 15px;
+            font-size: 14px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .multiplayer-panel {
+            position: absolute;
+            top: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            display: none;
+            align-items: center;
+            gap: 15px;
+            z-index: 100;
+            flex-direction: column;
+        }
+
+        .multiplayer-panel.show {
+            display: flex;
+        }
+
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .room-id-display {
+            background: linear-gradient(145deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: all;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.connected {
+            background: #44ff44;
+            animation: none;
+        }
+
+        .status-dot.connecting {
+            background: #ffaa00;
+        }
+
+        .join-room-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .join-room-input input {
+            padding: 8px 15px;
+            font-size: 16px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            width: 150px;
+            text-align: center;
+            font-family: monospace;
+        }
+
+        .btn-small {
+            padding: 8px 20px;
+            font-size: 14px;
+        }
+
+        .modal {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 200;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 40px 60px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: popIn 0.3s ease;
+        }
+        
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .modal-title {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .modal-winner {
+            font-size: 24px;
+            margin-bottom: 30px;
+            color: #667eea;
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #333;
+            z-index: 100;
+            max-width: 250px;
+        }
+        
+        .instructions h4 {
+            margin-bottom: 8px;
+            color: #667eea;
+        }
+        
+        .instructions p {
+            margin: 4px 0;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="canvas-container"></div>
+        
+        <div class="ui-panel">
+            <div class="player-info">
+                <span>当前玩家:</span>
+                <div class="player-indicator black" id="current-player"></div>
+                <span id="player-text">黑棋</span>
+            </div>
+            <button class="btn btn-mode" id="mode-btn" onclick="toggleGameMode()">双人对战</button>
+            <button class="btn btn-undo" id="undo-btn" onclick="undoMove()" disabled>悔棋</button>
+            <button class="btn btn-restart" onclick="restartGame()">重新开始</button>
+        </div>
+
+        <div class="difficulty-selector" id="difficulty-panel" style="display: none;">
+            <label>AI难度:</label>
+            <select id="difficulty" onchange="setDifficulty()">
+                <option value="1">简单</option>
+                <option value="2" selected>中等</option>
+                <option value="3">困难</option>
+            </select>
+        </div>
+
+        <div class="multiplayer-panel" id="multiplayer-panel">
+            <div class="room-info" id="room-host" style="display: none;">
+                <span>房间号 (分享给朋友):</span>
+                <span class="room-id-display" id="room-id" onclick="copyRoomId()" title="点击复制">------</span>
+                <button class="btn btn-small btn-mode" onclick="copyRoomId()">复制</button>
+            </div>
+            <div class="join-room-input" id="room-join">
+                <span>加入房间:</span>
+                <input type="text" id="join-room-id" placeholder="输入房间号" maxlength="6">
+                <button class="btn btn-small btn-mode" onclick="joinRoom()">加入</button>
+            </div>
+            <div class="connection-status">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="connection-text">等待连接...</span>
+            </div>
+        </div>
+
+        <div class="ai-thinking" id="ai-thinking">
+            🤖 AI思考中...
+        </div>
+        
+        <div class="modal" id="winner-modal">
+            <div class="modal-content">
+                <h2 class="modal-title">游戏结束</h2>
+                <p class="modal-winner" id="winner-text">黑棋获胜!</p>
+                <button class="btn btn-restart" onclick="restartGame()">再来一局</button>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h4>操作说明</h4>
+            <p>🖱️ 点击棋盘落子</p>
+            <p>🖐️ 拖拽旋转视角</p>
+            <p>🔍 滚轮缩放</p>
+            <p>↩️ 悔棋按钮撤销上一步</p>
+            <p>🌐 点击"双人对战"切换到联机模式</p>
+            <p>🔗 分享房间号给朋友即可联机对战</p>
+        </div>
+    </div>
+
+    <script>
+        // 游戏配置
+        const BOARD_SIZE = 15;
+        const CELL_SIZE = 2;
+        const BOARD_OFFSET = (BOARD_SIZE - 1) * CELL_SIZE / 2;
+        
+        // 游戏状态
+        let board = [];
+        let currentPlayer = 1; // 1 = 黑棋, 2 = 白棋
+        let gameOver = false;
+        let pieces = [];
+        let moveHistory = []; // 悔棋历史记录
+        let gameMode = 'pvp'; // 'pvp' = 双人对战, 'pve' = 人机对战, 'online' = 联机对战
+        let aiPlayer = 2; // AI扮演白棋
+        let aiDifficulty = 2; // 1=简单, 2=中等, 3=困难
+        let isAIThinking = false; // AI是否正在思考
+        
+        // 联机对战状态
+        let peer = null;
+        let conn = null;
+        let isHost = false;
+        let myPlayer = 1; // 在联机模式下，我是黑棋还是白棋
+        let roomId = '';
+        
+        // Three.js 全局变量
+        let scene, camera, renderer, controls;
+        let raycaster, mouse;
+        let boardMesh;
+        let hoverPiece = null;
+        
+        // 初始化游戏
+        function init() {
+            initBoard();
+            initThreeJS();
+            animate();
+        }
+        
+        // 初始化棋盘数据
+        function initBoard() {
+            board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+            pieces = [];
+            moveHistory = [];
+            currentPlayer = 1;
+            gameOver = false;
+            updatePlayerDisplay();
+            updateUndoButton();
+        }
+        
+        // 初始化 Three.js
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            
+            // 场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            scene.fog = new THREE.Fog(0x1a1a2e, 50, 100);
+            
+            // 相机
+            camera = new THREE.PerspectiveCamera(
+                45,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 40, 40);
+            camera.lookAt(0, 0, 0);
+            
+            // 渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+            
+            // 控制器
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2.5;
+            controls.minDistance = 20;
+            controls.maxDistance = 80;
+            
+            // 光照
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(20, 50, 20);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            const pointLight = new THREE.PointLight(0xffaa00, 0.5);
+            pointLight.position.set(-20, 30, -20);
+            scene.add(pointLight);
+            
+            // 创建棋盘
+            createBoard();
+            
+            // Raycaster 用于鼠标交互
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            // 事件监听
+            window.addEventListener('resize', onWindowResize, false);
+            renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+            renderer.domElement.addEventListener('click', onMouseClick, false);
+        }
+        
+        // 创建棋盘
+        function createBoard() {
+            // 棋盘基座
+            const boardGeometry = new THREE.BoxGeometry(
+                BOARD_SIZE * CELL_SIZE + 4,
+                1,
+                BOARD_SIZE * CELL_SIZE + 4
+            );
+            
+            // 创建木质纹理
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // 背景色
+            ctx.fillStyle = '#DEB887';
+            ctx.fillRect(0, 0, 512, 512);
+            
+            // 木纹效果
+            ctx.strokeStyle = '#CD853F';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 50; i++) {
+                ctx.beginPath();
+                ctx.moveTo(Math.random() * 512, 0);
+                ctx.lineTo(Math.random() * 512, 512);
+                ctx.stroke();
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const boardMaterial = new THREE.MeshStandardMaterial({
+                map: texture,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            boardMesh = new THREE.Mesh(boardGeometry, boardMaterial);
+            boardMesh.position.y = -0.5;
+            boardMesh.receiveShadow = true;
+            scene.add(boardMesh);
+            
+            // 创建网格线
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x333333, linewidth: 2 });
+            
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                // 横线
+                const hGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(-BOARD_OFFSET, 0.01, i * CELL_SIZE - BOARD_OFFSET),
+                    new THREE.Vector3(BOARD_OFFSET, 0.01, i * CELL_SIZE - BOARD_OFFSET)
+                ]);
+                const hLine = new THREE.Line(hGeometry, lineMaterial);
+                scene.add(hLine);
+                
+                // 竖线
+                const vGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(i * CELL_SIZE - BOARD_OFFSET, 0.01, -BOARD_OFFSET),
+                    new THREE.Vector3(i * CELL_SIZE - BOARD_OFFSET, 0.01, BOARD_OFFSET)
+                ]);
+                const vLine = new THREE.Line(vGeometry, lineMaterial);
+                scene.add(vLine);
+            }
+            
+            // 星位标记
+            const starPositions = [
+                [3, 3], [3, 7], [3, 11],
+                [7, 3], [7, 7], [7, 11],
+                [11, 3], [11, 7], [11, 11]
+            ];
+            
+            starPositions.forEach(pos => {
+                const starGeometry = new THREE.CircleGeometry(0.15, 32);
+                const starMaterial = new THREE.MeshBasicMaterial({ color: 0x333333 });
+                const star = new THREE.Mesh(starGeometry, starMaterial);
+                star.rotation.x = -Math.PI / 2;
+                star.position.set(
+                    pos[0] * CELL_SIZE - BOARD_OFFSET,
+                    0.02,
+                    pos[1] * CELL_SIZE - BOARD_OFFSET
+                );
+                scene.add(star);
+            });
+        }
+        
+        // 创建棋子
+        function createPiece(row, col, player) {
+            const geometry = new THREE.CylinderGeometry(0.8, 0.8, 0.4, 32);
+            let material;
+            
+            if (player === 1) {
+                // 黑棋材质
+                material = new THREE.MeshStandardMaterial({
+                    color: 0x1a1a1a,
+                    roughness: 0.2,
+                    metalness: 0.1
+                });
+            } else {
+                // 白棋材质
+                material = new THREE.MeshStandardMaterial({
+                    color: 0xf5f5f5,
+                    roughness: 0.2,
+                    metalness: 0.1
+                });
+            }
+            
+            const piece = new THREE.Mesh(geometry, material);
+            piece.position.set(
+                col * CELL_SIZE - BOARD_OFFSET,
+                5, // 起始高度（用于动画）
+                row * CELL_SIZE - BOARD_OFFSET
+            );
+            piece.castShadow = true;
+            piece.receiveShadow = true;
+            
+            // 存储棋子信息
+            piece.userData = { row, col, player };
+            
+            scene.add(piece);
+            pieces.push(piece);
+            
+            // 落子动画
+            animatePieceDrop(piece);
+        }
+        
+        // 棋子落下动画
+        function animatePieceDrop(piece) {
+            const targetY = 0.2;
+            const startY = piece.position.y;
+            const duration = 400;
+            const startTime = Date.now();
+            
+            function drop() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // 弹跳效果
+                const bounce = 1 - Math.pow(1 - progress, 3);
+                piece.position.y = startY - (startY - targetY) * bounce;
+                
+                if (progress < 1) {
+                    requestAnimationFrame(drop);
+                }
+            }
+            
+            drop();
+        }
+        
+        // 创建预览棋子
+        function createHoverPiece(row, col) {
+            if (hoverPiece) {
+                scene.remove(hoverPiece);
+            }
+            
+            const geometry = new THREE.CylinderGeometry(0.8, 0.8, 0.2, 32);
+            const material = new THREE.MeshStandardMaterial({
+                color: currentPlayer === 1 ? 0x1a1a1a : 0xf5f5f5,
+                transparent: true,
+                opacity: 0.5
+            });
+            
+            hoverPiece = new THREE.Mesh(geometry, material);
+            hoverPiece.position.set(
+                col * CELL_SIZE - BOARD_OFFSET,
+                0.3,
+                row * CELL_SIZE - BOARD_OFFSET
+            );
+            
+            scene.add(hoverPiece);
+        }
+        
+        // 移除预览棋子
+        function removeHoverPiece() {
+            if (hoverPiece) {
+                scene.remove(hoverPiece);
+                hoverPiece = null;
+            }
+        }
+        
+        // 鼠标移动事件
+        function onMouseMove(event) {
+            if (gameOver) return;
+            
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(boardMesh);
+            
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                const col = Math.round((point.x + BOARD_OFFSET) / CELL_SIZE);
+                const row = Math.round((point.z + BOARD_OFFSET) / CELL_SIZE);
+                
+                if (isValidMove(row, col)) {
+                    createHoverPiece(row, col);
+                    renderer.domElement.style.cursor = 'pointer';
+                } else {
+                    removeHoverPiece();
+                    renderer.domElement.style.cursor = 'default';
+                }
+            } else {
+                removeHoverPiece();
+                renderer.domElement.style.cursor = 'default';
+            }
+        }
+        
+        // 鼠标点击事件
+        function onMouseClick(event) {
+            if (gameOver) return;
+
+            // 联机模式下检查是否是当前玩家的回合
+            if (gameMode === 'online' && currentPlayer !== myPlayer) {
+                return;
+            }
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(boardMesh);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                const col = Math.round((point.x + BOARD_OFFSET) / CELL_SIZE);
+                const row = Math.round((point.z + BOARD_OFFSET) / CELL_SIZE);
+
+                if (isValidMove(row, col)) {
+                    makeMove(row, col);
+                }
+            }
+        }
+        
+        // 检查是否可落子
+        function isValidMove(row, col) {
+            return row >= 0 && row < BOARD_SIZE && 
+                   col >= 0 && col < BOARD_SIZE && 
+                   board[row][col] === 0;
+        }
+        
+        // 落子
+        function makeMove(row, col) {
+            // 联机模式下检查是否是当前玩家的回合
+            if (gameMode === 'online' && currentPlayer !== myPlayer) {
+                return;
+            }
+
+            board[row][col] = currentPlayer;
+            createPiece(row, col, currentPlayer);
+
+            // 记录历史
+            moveHistory.push({ row, col, player: currentPlayer });
+            updateUndoButton();
+
+            // 联机模式下发送落子消息
+            if (gameMode === 'online') {
+                sendMove(row, col, currentPlayer);
+            }
+
+            if (checkWin(row, col)) {
+                gameOver = true;
+                showWinner(currentPlayer);
+            } else {
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+                updatePlayerDisplay();
+
+                // 人机对战模式下，轮到AI时自动落子
+                if (gameMode === 'pve' && currentPlayer === aiPlayer && !gameOver) {
+                    setTimeout(makeAIMove, 500);
+                }
+            }
+
+            removeHoverPiece();
+        }
+
+        // AI落子
+        function makeAIMove() {
+            if (gameOver || isAIThinking) return;
+
+            isAIThinking = true;
+            showAIThinking(true);
+
+            // 使用setTimeout让UI有时间更新
+            setTimeout(() => {
+                const move = findBestMove();
+                if (move) {
+                    makeMove(move.row, move.col);
+                }
+                isAIThinking = false;
+                showAIThinking(false);
+            }, 300);
+        }
+
+        // 显示/隐藏AI思考状态
+        function showAIThinking(show) {
+            const thinkingDiv = document.getElementById('ai-thinking');
+            if (show) {
+                thinkingDiv.classList.add('show');
+            } else {
+                thinkingDiv.classList.remove('show');
+            }
+        }
+
+        // 寻找最佳落子位置
+        function findBestMove() {
+            // 简单难度：随机选择一个好位置
+            if (aiDifficulty === 1) {
+                return findEasyMove();
+            }
+            // 中等/困难：使用评估函数
+            return findSmartMove();
+        }
+
+        // 简单AI：优先阻止玩家，其次进攻
+        function findEasyMove() {
+            const humanPlayer = aiPlayer === 1 ? 2 : 1;
+
+            // 检查是否需要阻止玩家的连四或活三
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    if (board[row][col] === 0) {
+                        board[row][col] = humanPlayer;
+                        if (checkWin(row, col)) {
+                            board[row][col] = 0;
+                            return { row, col };
+                        }
+                        board[row][col] = 0;
+                    }
+                }
+            }
+
+            // 检查是否能形成连四
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    if (board[row][col] === 0) {
+                        board[row][col] = aiPlayer;
+                        if (checkWin(row, col)) {
+                            board[row][col] = 0;
+                            return { row, col };
+                        }
+                        board[row][col] = 0;
+                    }
+                }
+            }
+
+            // 随机选择一个有邻居的空位
+            const candidates = [];
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    if (board[row][col] === 0 && hasNeighbor(row, col, 2)) {
+                        candidates.push({ row, col });
+                    }
+                }
+            }
+
+            if (candidates.length > 0) {
+                return candidates[Math.floor(Math.random() * candidates.length)];
+            }
+
+            // 如果没有候选位置，选择中心
+            return { row: 7, col: 7 };
+        }
+
+        // 智能AI：使用评估函数
+        function findSmartMove() {
+            let bestScore = -Infinity;
+            let bestMoves = [];
+            const searchRange = aiDifficulty === 3 ? 2 : 1;
+
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    if (board[row][col] === 0 && hasNeighbor(row, col, searchRange)) {
+                        const score = evaluatePosition(row, col);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMoves = [{ row, col }];
+                        } else if (score === bestScore) {
+                            bestMoves.push({ row, col });
+                        }
+                    }
+                }
+            }
+
+            if (bestMoves.length > 0) {
+                return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+            }
+
+            return { row: 7, col: 7 };
+        }
+
+        // 检查是否有邻居
+        function hasNeighbor(row, col, range) {
+            for (let i = -range; i <= range; i++) {
+                for (let j = -range; j <= range; j++) {
+                    if (i === 0 && j === 0) continue;
+                    const r = row + i;
+                    const c = col + j;
+                    if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+                        if (board[r][c] !== 0) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // 评估位置得分
+        function evaluatePosition(row, col) {
+            const humanPlayer = aiPlayer === 1 ? 2 : 1;
+
+            // 检查AI是否能赢
+            board[row][col] = aiPlayer;
+            if (checkWin(row, col)) {
+                board[row][col] = 0;
+                return 100000;
+            }
+
+            // 检查是否需要阻止玩家赢
+            board[row][col] = humanPlayer;
+            if (checkWin(row, col)) {
+                board[row][col] = 0;
+                return 90000;
+            }
+            board[row][col] = 0;
+
+            let score = 0;
+
+            // 评估AI的进攻潜力
+            score += evaluatePatterns(row, col, aiPlayer) * 1.2;
+
+            // 评估阻止玩家的必要性
+            score += evaluatePatterns(row, col, humanPlayer);
+
+            // 位置偏好（中心位置更有价值）
+            const centerDistance = Math.abs(row - 7) + Math.abs(col - 7);
+            score += (14 - centerDistance) * 5;
+
+            return score;
+        }
+
+        // 评估棋型
+        function evaluatePatterns(row, col, player) {
+            let score = 0;
+            const directions = [
+                [0, 1],   // 横向
+                [1, 0],   // 纵向
+                [1, 1],   // 对角线
+                [1, -1]   // 反对角线
+            ];
+
+            directions.forEach(([dr, dc]) => {
+                let pattern = getPattern(row, col, dr, dc, player);
+                score += scorePattern(pattern);
+            });
+
+            return score;
+        }
+
+        // 获取棋型
+        function getPattern(row, col, dr, dc, player) {
+            let pattern = '';
+
+            // 正方向
+            for (let i = 1; i <= 4; i++) {
+                const r = row + dr * i;
+                const c = col + dc * i;
+                if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) break;
+                if (board[r][c] === player) pattern += 'O';
+                else if (board[r][c] === 0) pattern += '.';
+                else pattern += 'X';
+            }
+
+            pattern += 'P'; // 当前位置
+
+            // 反方向
+            for (let i = 1; i <= 4; i++) {
+                const r = row - dr * i;
+                const c = col - dc * i;
+                if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) break;
+                if (board[r][c] === player) pattern = 'O' + pattern;
+                else if (board[r][c] === 0) pattern = '.' + pattern;
+                else pattern = 'X' + pattern;
+            }
+
+            return pattern;
+        }
+
+        // 评估棋型得分
+        function scorePattern(pattern) {
+            // 连五
+            if (pattern.includes('OOOOO')) return 100000;
+
+            // 活四
+            if (pattern.includes('.OOOO.')) return 10000;
+
+            // 冲四
+            if (pattern.includes('XOOOO.') || pattern.includes('.OOOOX') ||
+                pattern.includes('OOO.O') || pattern.includes('OO.OO') || pattern.includes('O.OOO'))
+                return 5000;
+
+            // 活三
+            if (pattern.includes('.OOO.') || pattern.includes('.OO.O.') || pattern.includes('.O.OO.'))
+                return 1000;
+
+            // 眠三
+            if (pattern.includes('XOOO.') || pattern.includes('.OOOX') ||
+                pattern.includes('XOO.O') || pattern.includes('O.OOX') ||
+                pattern.includes('XOOOO') || pattern.includes('OOOOX'))
+                return 500;
+
+            // 活二
+            if (pattern.includes('.OO.') || pattern.includes('.O.O.'))
+                return 200;
+
+            // 眠二
+            if (pattern.includes('XOO.') || pattern.includes('.OOX'))
+                return 50;
+
+            return 0;
+        }
+        
+        // 检查获胜
+        function checkWin(row, col) {
+            const player = board[row][col];
+            const directions = [
+                [0, 1],   // 横向
+                [1, 0],   // 纵向
+                [1, 1],   // 对角线
+                [1, -1]   // 反对角线
+            ];
+            
+            for (const [dr, dc] of directions) {
+                let count = 1;
+                
+                // 正方向
+                for (let i = 1; i < 5; i++) {
+                    const r = row + dr * i;
+                    const c = col + dc * i;
+                    if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+                        count++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // 反方向
+                for (let i = 1; i < 5; i++) {
+                    const r = row - dr * i;
+                    const c = col - dc * i;
+                    if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+                        count++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (count >= 5) return true;
+            }
+            
+            return false;
+        }
+        
+        // 更新玩家显示
+        function updatePlayerDisplay() {
+            const indicator = document.getElementById('current-player');
+            const text = document.getElementById('player-text');
+
+            if (currentPlayer === 1) {
+                indicator.className = 'player-indicator black';
+                text.textContent = '黑棋';
+            } else {
+                indicator.className = 'player-indicator white';
+                text.textContent = '白棋';
+            }
+        }
+
+        // 更新悔棋按钮状态
+        function updateUndoButton() {
+            const undoBtn = document.getElementById('undo-btn');
+            undoBtn.disabled = moveHistory.length === 0 || gameOver;
+        }
+
+        // 悔棋功能
+        function undoMove() {
+            if (moveHistory.length === 0 || gameOver) return;
+
+            // 联机模式下，只撤销一步
+            if (gameMode === 'online') {
+                sendUndo();
+            }
+
+            executeUndo();
+        }
+        
+        // 显示获胜者
+        function showWinner(player) {
+            const modal = document.getElementById('winner-modal');
+            const winnerText = document.getElementById('winner-text');
+            
+            winnerText.textContent = player === 1 ? '黑棋获胜!' : '白棋获胜!';
+            modal.classList.add('show');
+        }
+        
+        // 重新开始游戏
+        function restartGame() {
+            // 联机模式下发送重新开始消息
+            if (gameMode === 'online') {
+                sendRestart();
+            }
+
+            executeRestart();
+        }
+
+        // 切换游戏模式
+        function toggleGameMode() {
+            const modeBtn = document.getElementById('mode-btn');
+            const difficultyPanel = document.getElementById('difficulty-panel');
+            const multiplayerPanel = document.getElementById('multiplayer-panel');
+
+            // 清理当前连接
+            cleanupMultiplayer();
+
+            if (gameMode === 'pvp') {
+                // 切换到人机对战
+                gameMode = 'pve';
+                modeBtn.textContent = '人机对战';
+                modeBtn.classList.add('active');
+                difficultyPanel.style.display = 'flex';
+                multiplayerPanel.classList.remove('show');
+                aiPlayer = 2;
+                restartGame();
+            } else if (gameMode === 'pve') {
+                // 切换到联机对战
+                gameMode = 'online';
+                modeBtn.textContent = '联机对战';
+                modeBtn.classList.remove('active');
+                difficultyPanel.style.display = 'none';
+                multiplayerPanel.classList.add('show');
+                initMultiplayer();
+            } else {
+                // 切换到双人对战
+                gameMode = 'pvp';
+                modeBtn.textContent = '双人对战';
+                modeBtn.classList.remove('active');
+                difficultyPanel.style.display = 'none';
+                multiplayerPanel.classList.remove('show');
+                restartGame();
+            }
+        }
+
+        // 设置难度
+        function setDifficulty() {
+            const difficultySelect = document.getElementById('difficulty');
+            aiDifficulty = parseInt(difficultySelect.value);
+        }
+
+        // ==================== 联机对战功能 ====================
+
+        // 初始化联机对战
+        function initMultiplayer() {
+            cleanupMultiplayer();
+
+            // 生成6位房间号
+            roomId = generateRoomId();
+            myPlayer = 1; // 创建房间的人是黑棋
+            isHost = true;
+
+            // 显示房间号
+            document.getElementById('room-id').textContent = roomId;
+            document.getElementById('room-host').style.display = 'flex';
+            document.getElementById('room-join').style.display = 'none';
+            updateConnectionStatus('connecting', '等待玩家加入...');
+
+            // 创建Peer
+            peer = new Peer(roomId, {
+                host: 'peerjs-server.herokuapp.com',
+                secure: true,
+                port: 443,
+                debug: 1
+            });
+
+            peer.on('open', (id) => {
+                console.log('房间已创建:', id);
+                updateConnectionStatus('connecting', '等待玩家加入...');
+            });
+
+            peer.on('connection', (connection) => {
+                if (conn) {
+                    console.log('已有连接，拒绝新连接');
+                    connection.close();
+                    return;
+                }
+
+                conn = connection;
+                setupConnection();
+                updateConnectionStatus('connected', '玩家已连接！');
+                restartGame();
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer错误:', err);
+                updateConnectionStatus('error', '连接错误: ' + err.message);
+            });
+        }
+
+        // 加入房间
+        function joinRoom() {
+            const joinId = document.getElementById('join-room-id').value.trim().toUpperCase();
+            if (!joinId || joinId.length !== 6) {
+                alert('请输入6位房间号');
+                return;
+            }
+
+            cleanupMultiplayer();
+
+            roomId = joinId;
+            myPlayer = 2; // 加入房间的人是白棋
+            isHost = false;
+
+            document.getElementById('room-host').style.display = 'none';
+            document.getElementById('room-join').style.display = 'flex';
+            updateConnectionStatus('connecting', '正在连接...');
+
+            peer = new Peer(generateRoomId(), {
+                host: 'peerjs-server.herokuapp.com',
+                secure: true,
+                port: 443,
+                debug: 1
+            });
+
+            peer.on('open', () => {
+                conn = peer.connect(roomId, {
+                    reliable: true
+                });
+                setupConnection();
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer错误:', err);
+                updateConnectionStatus('error', '连接失败');
+            });
+        }
+
+        // 设置连接
+        function setupConnection() {
+            conn.on('open', () => {
+                console.log('连接已建立');
+                updateConnectionStatus('connected', '已连接！');
+
+                // 发送同步消息
+                if (isHost) {
+                    syncGameState();
+                }
+            });
+
+            conn.on('data', (data) => {
+                handleMultiplayerData(data);
+            });
+
+            conn.on('close', () => {
+                console.log('连接已关闭');
+                updateConnectionStatus('error', '对方断开连接');
+                conn = null;
+            });
+
+            conn.on('error', (err) => {
+                console.error('连接错误:', err);
+                updateConnectionStatus('error', '连接错误');
+            });
+        }
+
+        // 处理收到的数据
+        function handleMultiplayerData(data) {
+            switch (data.type) {
+                case 'move':
+                    // 对方落子
+                    if (data.player !== myPlayer) {
+                        board[data.row][data.col] = data.player;
+                        createPiece(data.row, data.col, data.player);
+                        moveHistory.push({ row: data.row, col: data.col, player: data.player });
+
+                        if (checkWin(data.row, data.col)) {
+                            gameOver = true;
+                            showWinner(data.player);
+                        } else {
+                            currentPlayer = currentPlayer === 1 ? 2 : 1;
+                            updatePlayerDisplay();
+                        }
+                        updateUndoButton();
+                    }
+                    break;
+
+                case 'restart':
+                    // 对方请求重新开始
+                    executeRestart();
+                    break;
+
+                case 'undo':
+                    // 对方请求悔棋
+                    executeUndo();
+                    break;
+
+                case 'sync':
+                    // 同步游戏状态
+                    if (!isHost) {
+                        board = data.board;
+                        currentPlayer = data.currentPlayer;
+                        gameOver = data.gameOver;
+
+                        // 清除所有棋子并重新创建
+                        pieces.forEach(piece => scene.remove(piece));
+                        pieces = [];
+                        moveHistory = data.moveHistory || [];
+
+                        // 重新创建棋子
+                        for (let row = 0; row < BOARD_SIZE; row++) {
+                            for (let col = 0; col < BOARD_SIZE; col++) {
+                                if (board[row][col] !== 0) {
+                                    const piece = createPieceStatic(row, col, board[row][col]);
+                                    pieces.push(piece);
+                                }
+                            }
+                        }
+
+                        updatePlayerDisplay();
+                        updateUndoButton();
+                    }
+                    break;
+            }
+        }
+
+        // 同步游戏状态
+        function syncGameState() {
+            if (conn && conn.open) {
+                conn.send({
+                    type: 'sync',
+                    board: board,
+                    currentPlayer: currentPlayer,
+                    gameOver: gameOver,
+                    moveHistory: moveHistory
+                });
+            }
+        }
+
+        // 发送落子消息
+        function sendMove(row, col, player) {
+            if (conn && conn.open) {
+                conn.send({
+                    type: 'move',
+                    row: row,
+                    col: col,
+                    player: player
+                });
+            }
+        }
+
+        // 发送重新开始消息
+        function sendRestart() {
+            if (conn && conn.open) {
+                conn.send({ type: 'restart' });
+            }
+        }
+
+        // 发送悔棋消息
+        function sendUndo() {
+            if (conn && conn.open) {
+                conn.send({ type: 'undo' });
+            }
+        }
+
+        // 创建棋子（静态，无动画）
+        function createPieceStatic(row, col, player) {
+            const geometry = new THREE.CylinderGeometry(0.8, 0.8, 0.4, 32);
+            const material = new THREE.MeshStandardMaterial({
+                color: player === 1 ? 0x1a1a1a : 0xf5f5f5,
+                roughness: 0.2,
+                metalness: 0.1
+            });
+
+            const piece = new THREE.Mesh(geometry, material);
+            piece.position.set(
+                col * CELL_SIZE - BOARD_OFFSET,
+                0.2,
+                row * CELL_SIZE - BOARD_OFFSET
+            );
+            piece.castShadow = true;
+            piece.receiveShadow = true;
+            piece.userData = { row, col, player };
+
+            scene.add(piece);
+            return piece;
+        }
+
+        // 更新连接状态显示
+        function updateConnectionStatus(status, text) {
+            const dot = document.getElementById('status-dot');
+            const textEl = document.getElementById('connection-text');
+
+            dot.className = 'status-dot';
+            if (status === 'connected') {
+                dot.classList.add('connected');
+            } else if (status === 'connecting') {
+                dot.classList.add('connecting');
+            }
+
+            textEl.textContent = text;
+        }
+
+        // 生成房间号
+        function generateRoomId() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let result = '';
+            for (let i = 0; i < 6; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        // 复制房间号
+        function copyRoomId() {
+            const roomIdEl = document.getElementById('room-id');
+            navigator.clipboard.writeText(roomIdEl.textContent).then(() => {
+                alert('房间号已复制到剪贴板！');
+            }).catch(() => {
+                // 降级方案
+                const textArea = document.createElement('textarea');
+                textArea.value = roomIdEl.textContent;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('房间号已复制到剪贴板！');
+            });
+        }
+
+        // 清理联机状态
+        function cleanupMultiplayer() {
+            if (conn) {
+                conn.close();
+                conn = null;
+            }
+            if (peer) {
+                peer.destroy();
+                peer = null;
+            }
+            isHost = false;
+            myPlayer = 1;
+            roomId = '';
+        }
+
+        // 执行重新开始（供联机调用）
+        function executeRestart() {
+            pieces.forEach(piece => scene.remove(piece));
+            pieces = [];
+            initBoard();
+            document.getElementById('winner-modal').classList.remove('show');
+            removeHoverPiece();
+        }
+
+        // 执行悔棋（供联机调用）
+        function executeUndo() {
+            if (moveHistory.length === 0) return;
+
+            const lastMove = moveHistory.pop();
+            board[lastMove.row][lastMove.col] = 0;
+
+            const pieceIndex = pieces.findIndex(p =>
+                p.userData.row === lastMove.row &&
+                p.userData.col === lastMove.col &&
+                p.userData.player === lastMove.player
+            );
+
+            if (pieceIndex !== -1) {
+                const piece = pieces[pieceIndex];
+                scene.remove(piece);
+                pieces.splice(pieceIndex, 1);
+            }
+
+            currentPlayer = lastMove.player;
+            updatePlayerDisplay();
+            updateUndoButton();
+        }
+
+        // 窗口大小调整
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        // 启动游戏
+        init();
+    </script>
+</body>
+</html>
